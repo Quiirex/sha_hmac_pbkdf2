@@ -9,25 +9,25 @@ class StorePassword:
     def generate_salt(self, byte_len=64):
         return secrets.token_urlsafe(byte_len)
 
-    def sha_with_salt(self, mode, password, salt):
-        return mode((password + salt).encode()).hexdigest()
+    def hash_with_salt(self, hash_function, password, salt):
+        return hash_function((password + salt).encode()).hexdigest()
 
 
 class HMAC:
-    def __init__(self, key: bytes, message=None, mode=None):
+    def __init__(self, key: bytes, message=None, hash_function=None):
         # Assign the mode to messageDigest directly
-        self.messageDigest = mode
+        self.hash_function = hash_function
 
         # Initialize input and output message digests
-        self.input = self.messageDigest()
-        self.output = self.messageDigest()
+        self.input = self.hash_function()
+        self.output = self.hash_function()
 
         # Get block size
         self.block_size = self.input.block_size
 
         # If key length is greater than block size, digest it
         if len(key) > self.block_size:
-            key = self.messageDigest(key).digest()
+            key = self.hash_function(key).digest()
 
         # Pad key to block size with null bytes
         key = key.ljust(self.block_size, b"\0")
@@ -70,29 +70,44 @@ class HMAC:
 
 
 class PBKDF2:
-    def __init__(self, mode, password, salt, number_of_iterations, derived_key_length):
-        self.mode = mode
+    def __init__(self, hash_function, password, salt, iterations, derived_key_length):
+        # Initialize class variables
+        self.hash_function = hash_function
         self.password = password
         self.salt = salt
-        self.number_of_iterations = number_of_iterations
+        self.iterations = iterations
         self.derived_key_length = derived_key_length
 
-    def pbkdf2_function(self, passwd, salt, count, i):
-        result = u = HMAC(passwd, salt + struct.pack(">i", i), self.mode).digest()
-        for iteration in range(2, count + 1):
-            u = HMAC(passwd, u, self.mode).digest()
+    def pbkdf2_function(self, password, salt, iterations, block_index):
+        # Compute the initial HMAC digest (u) and set it as the initial result
+        result = u = HMAC(
+            password, salt + struct.pack(">i", block_index), self.hash_function
+        ).digest()
+
+        # Perform iterations - 1 HMAC computations
+        for _ in range(2, iterations + 1):
+            u = HMAC(password, u, self.hash_function).digest()
+            # XOR the result with the new digest (u)
             result = bytes(i ^ j for i, j in zip(result, u))
+
         return result
 
     def result(self):
-        derived_key, hash_length = b"", self.mode().digest_size
+        # Initialize the derived key and get the hash length
+        derived_key, hash_length = b"", self.hash_function().digest_size
+
+        # Compute the number of blocks needed to get the desired key length
         blocks = (self.derived_key_length // hash_length) + (
             1 if self.derived_key_length % hash_length else 0
         )
-        for block in range(1, blocks + 1):
+
+        # Compute each block of the derived key
+        for block_index in range(1, blocks + 1):
             derived_key += self.pbkdf2_function(
-                self.password, self.salt, self.number_of_iterations, block
+                self.password, self.salt, self.iterations, block_index
             )
+
+        # Return the derived key truncated to the desired length, in hexadecimal format
         return derived_key[: self.derived_key_length].hex()
 
 
@@ -189,9 +204,9 @@ class GUI:
 
             store_password = StorePassword()
             if selected_algorithm == "SHA-256":
-                result = store_password.sha_with_salt(hashlib.sha256, password, salt)
+                result = store_password.hash_with_salt(hashlib.sha256, password, salt)
             elif selected_algorithm == "SHA-512":
-                result = store_password.sha_with_salt(hashlib.sha512, password, salt)
+                result = store_password.hash_with_salt(hashlib.sha512, password, salt)
             self.output_text.insert(tk.END, result + "\n")
             print("Done")
 
