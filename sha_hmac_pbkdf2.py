@@ -9,67 +9,91 @@ class StorePassword:
     def generate_salt(self, byte_len=64):
         return secrets.token_urlsafe(byte_len)
 
-    def sha_with_salt(self, digest_mod, password, salt):
-        return digest_mod((password + salt).encode()).hexdigest()
+    def sha_with_salt(self, mode, password, salt):
+        return mode((password + salt).encode()).hexdigest()
 
 
 class HMAC:
-    def __init__(self, key: bytes, message=None, digest_mod=None):
-        if callable(digest_mod):
-            self.messageDigest = digest_mod
+    def __init__(self, key: bytes, message=None, mode=None):
+        # Assign the mode to messageDigest directly
+        self.messageDigest = mode
 
+        # Initialize input and output message digests
         self.input = self.messageDigest()
         self.output = self.messageDigest()
 
+        # Get block size
         self.block_size = self.input.block_size
+
+        # If key length is greater than block size, digest it
         if len(key) > self.block_size:
             key = self.messageDigest(key).digest()
 
+        # Pad key to block size with null bytes
         key = key.ljust(self.block_size, b"\0")
 
-        self.ipad = 0x36  # = 00110110
-        self.input_signature = bytes((K ^ self.ipad) for K in key)
-        self.opad = 0x5C  # = 01011100
-        self.output_signature = bytes((K ^ self.opad) for K in key)
+        # Define ipad and opad constants
+        self.ipad = 0x36
+        self.opad = 0x5C
 
+        # Compute input and output signatures
+        self.input_signature = bytes((key_byte ^ self.ipad) for key_byte in key)
+        self.output_signature = bytes((key_byte ^ self.opad) for key_byte in key)
+
+        # Update input and output with their respective signatures
         self.input.update(self.input_signature)
         self.output.update(self.output_signature)
 
+        # If message is not None, update input with message
         if message is not None:
             self.input.update(message)
 
     def hexdigest(self):
-        h = self.output.copy()
-        h.update(self.input.digest())
-        return h.hexdigest()
+        # Copy output message digest
+        hmac_copy = self.output.copy()
+
+        # Update copy with input digest
+        hmac_copy.update(self.input.digest())
+
+        # Return hexadecimal representation of digest
+        return hmac_copy.hexdigest()
 
     def digest(self):
-        h = self.output.copy()
-        h.update(self.input.digest())
-        return h.digest()
+        # Copy output message digest
+        hmac_copy = self.output.copy()
+
+        # Update copy with input digest
+        hmac_copy.update(self.input.digest())
+
+        # Return digest
+        return hmac_copy.digest()
 
 
 class PBKDF2:
-    def __init__(self, digest_mod, master_password, salt, count, dk_length):
-        self.digest_mod = digest_mod
-        self.password = master_password
+    def __init__(self, mode, password, salt, number_of_iterations, derived_key_length):
+        self.mode = mode
+        self.password = password
         self.salt = salt
-        self.count = count
-        self.dk_length = dk_length
+        self.number_of_iterations = number_of_iterations
+        self.derived_key_length = derived_key_length
 
     def pbkdf2_function(self, passwd, salt, count, i):
-        r = u = HMAC(passwd, salt + struct.pack(">i", i), self.digest_mod).digest()
-        for i in range(2, count + 1):
-            u = HMAC(passwd, u, self.digest_mod).digest()
-            r = bytes(i ^ j for i, j in zip(r, u))
-        return r
+        result = u = HMAC(passwd, salt + struct.pack(">i", i), self.mode).digest()
+        for iteration in range(2, count + 1):
+            u = HMAC(passwd, u, self.mode).digest()
+            result = bytes(i ^ j for i, j in zip(result, u))
+        return result
 
     def result(self):
-        dk, h_length = b"", self.digest_mod().digest_size
-        blocks = (self.dk_length // h_length) + (1 if self.dk_length % h_length else 0)
-        for i in range(1, blocks + 1):
-            dk += self.pbkdf2_function(self.password, self.salt, self.count, i)
-        return dk[: self.dk_length].hex()
+        derived_key, hash_length = b"", self.mode().digest_size
+        blocks = (self.derived_key_length // hash_length) + (
+            1 if self.derived_key_length % hash_length else 0
+        )
+        for block in range(1, blocks + 1):
+            derived_key += self.pbkdf2_function(
+                self.password, self.salt, self.number_of_iterations, block
+            )
+        return derived_key[: self.derived_key_length].hex()
 
 
 class GUI:
@@ -122,7 +146,7 @@ class GUI:
         ).grid(row=4, column=2)
 
         tk.Label(self.main_frame, text="Output:").grid(row=5, column=0, padx=10)
-        self.output_text = tk.Text(self.main_frame, width=53, height=6)
+        self.output_text = tk.Text(self.main_frame, width=53, height=4)
         self.output_text.grid(row=5, column=1)
         self.output_text.config(state=tk.DISABLED)
 
@@ -130,13 +154,10 @@ class GUI:
         self.save_grid.grid(row=5, column=2)
 
         tk.Button(
-            self.save_grid, text="Save hash", command=self.save_hash, width=8
+            self.save_grid, text="Save output", command=self.save_output, width=8
         ).grid(row=0, column=0)
-        tk.Button(self.save_grid, text="Save MAC", command=self.save_mac, width=8).grid(
-            row=1, column=0
-        )
         tk.Button(self.save_grid, text="Save key", command=self.save_key, width=8).grid(
-            row=2, column=0
+            row=1, column=0
         )
 
         tk.Button(self.main_frame, text="Process", command=self.process_inputs).grid(
@@ -159,58 +180,57 @@ class GUI:
         selected_mode = self.selected_mode.get()
 
         if selected_mode == "Store password":
+            print("----------------------------------------")
             print(f"Selected hashing algorithm: {selected_algorithm}")
             print(f"Selected mode: {selected_mode}")
+            print("Processing..")
             salt = self.salt_input.get()
             password = self.pass_input.get()
 
-            ps = StorePassword()
+            store_password = StorePassword()
             if selected_algorithm == "SHA-256":
-                result = ps.sha_with_salt(hashlib.sha256, password, salt)
+                result = store_password.sha_with_salt(hashlib.sha256, password, salt)
             elif selected_algorithm == "SHA-512":
-                result = ps.sha_with_salt(hashlib.sha512, password, salt)
-
+                result = store_password.sha_with_salt(hashlib.sha512, password, salt)
             self.output_text.insert(tk.END, result + "\n")
+            print("Done")
 
         elif selected_mode == "HMAC":
+            print("----------------------------------------")
             print(f"Selected hashing algorithm: {selected_algorithm}")
             print(f"Selected mode: {selected_mode}")
+            print("Processing..")
             key = self.key_input.get().encode("utf-8")
             password = self.pass_input.get().encode("utf-8")
 
             if selected_algorithm == "SHA-256":
-                r = HMAC(key, password, hashlib.sha256)
-                self.output_text.insert(tk.END, r.hexdigest() + "\n")
+                result = HMAC(key, password, hashlib.sha256)
             elif selected_algorithm == "SHA-512":
-                r = HMAC(key, password, hashlib.sha512)
-                self.output_text.insert(tk.END, r.hexdigest() + "\n")
+                result = HMAC(key, password, hashlib.sha512)
+            self.output_text.insert(tk.END, result.hexdigest() + "\n")
+            print("Done")
 
         elif selected_mode == "PBKDF2":
+            print("----------------------------------------")
             print(f"Selected hashing algorithm: {selected_algorithm}")
             print(f"Selected mode: {selected_mode}")
+            print("Processing..")
             salt = self.salt_input.get().encode("utf-8")
             password = self.pass_input.get().encode("utf-8")
 
             if selected_algorithm == "SHA-256":
-                pbkdf2 = PBKDF2(hashlib.sha256, password, salt, 31000, 32)
-                self.output_text.insert(tk.END, pbkdf2.result() + "\n")
+                result = PBKDF2(hashlib.sha256, password, salt, 31000, 32)
             elif selected_algorithm == "SHA-512":
-                pbkdf2 = PBKDF2(hashlib.sha512, password, salt, 12000, 64)
-                self.output_text.insert(tk.END, pbkdf2.result() + "\n")
+                result = PBKDF2(hashlib.sha512, password, salt, 12000, 64)
+            self.output_text.insert(tk.END, result.result() + "\n")
+            print("Done")
 
-    def save_hash(self):
+    def save_output(self):
         content = self.output_text.get("1.0", tk.END).strip()
         if content:
             self.save_to_file(content)
         else:
-            messagebox.showinfo("No Hash", "No hash to save!")
-
-    def save_mac(self):
-        content = self.output_text.get("1.0", tk.END).strip()
-        if content:
-            self.save_to_file(content)
-        else:
-            messagebox.showinfo("No MAC", "No MAC to save!")
+            messagebox.showinfo("No Output", "No output to save!")
 
     def save_key(self):
         content = self.key_input.get().strip()
