@@ -76,7 +76,6 @@ class GUI:
     def __init__(self, root):
         self.root = root
         root.title("SHA-256/512 hashing, HMAC, PBKDF2")
-        self.counter = 0
 
         self.algorithm_options = ["SHA-256", "SHA-512"]
         self.mode_options = ["Store password", "HMAC", "PBKDF2"]
@@ -88,7 +87,7 @@ class GUI:
         self.selected_mode.set(self.mode_options[0])
 
         self.main_frame = tk.Frame(root)
-        self.main_frame.pack(padx=20, pady=20)
+        self.main_frame.pack(padx=10, pady=10)
 
         tk.Label(self.main_frame, text="Algorithm:").grid(row=0, column=0, padx=10)
         self.algorithm_menu = tk.OptionMenu(
@@ -123,22 +122,25 @@ class GUI:
         ).grid(row=4, column=2)
 
         tk.Label(self.main_frame, text="Output:").grid(row=5, column=0, padx=10)
-        self.output_text = tk.Text(self.main_frame, width=53, height=10)
+        self.output_text = tk.Text(self.main_frame, width=53, height=6)
         self.output_text.grid(row=5, column=1)
         self.output_text.config(state=tk.DISABLED)
 
-        tk.Button(self.main_frame, text="Hash", command=self.hash_inputs).grid(
-            row=6, column=0
+        self.save_grid = tk.Frame(self.main_frame)
+        self.save_grid.grid(row=5, column=2)
+
+        tk.Button(
+            self.save_grid, text="Save hash", command=self.save_hash, width=8
+        ).grid(row=0, column=0)
+        tk.Button(self.save_grid, text="Save MAC", command=self.save_mac, width=8).grid(
+            row=1, column=0
+        )
+        tk.Button(self.save_grid, text="Save key", command=self.save_key, width=8).grid(
+            row=2, column=0
         )
 
-        tk.Button(self.main_frame, text="Save Hash", command=self.save_hash).grid(
-            row=7, column=0, pady=10
-        )
-        tk.Button(self.main_frame, text="Save MAC", command=self.save_mac).grid(
-            row=7, column=1, pady=10
-        )
-        tk.Button(self.main_frame, text="Save Key", command=self.save_key).grid(
-            row=7, column=2, pady=10
+        tk.Button(self.main_frame, text="Process", command=self.process_inputs).grid(
+            row=6, column=0
         )
 
     def generate_salt(self):
@@ -149,81 +151,73 @@ class GUI:
         self.key_input.delete(0, tk.END)
         self.key_input.insert(tk.END, secrets.token_urlsafe(32))
 
-    def hash_inputs(self):
-        try:
-            self.output_text.config(state=tk.NORMAL)
-            self.output_text.delete("1.0", tk.END)
+    def process_inputs(self):
+        self.output_text.config(state=tk.NORMAL)
+        self.output_text.delete("1.0", tk.END)
 
-            selected_algorithm = self.selected_algorithm.get()
-            selected_mode = self.selected_mode.get()
+        selected_algorithm = self.selected_algorithm.get()
+        selected_mode = self.selected_mode.get()
 
-            if selected_mode == "Store password":
-                print(f"selected_algorithm: {selected_algorithm}")
-                print(f"selected_mode: {selected_mode}")
-                salt = self.salt_input.get()
-                password = self.pass_input.get()
+        if selected_mode == "Store password":
+            print(f"Selected hashing algorithm: {selected_algorithm}")
+            print(f"Selected mode: {selected_mode}")
+            salt = self.salt_input.get()
+            password = self.pass_input.get()
 
-                ps = StorePassword()
-                if selected_algorithm == "SHA-256":
-                    result = ps.sha_with_salt(hashlib.sha256, password, salt)
-                elif selected_algorithm == "SHA-512":
-                    result = ps.sha_with_salt(hashlib.sha512, password, salt)
+            ps = StorePassword()
+            if selected_algorithm == "SHA-256":
+                result = ps.sha_with_salt(hashlib.sha256, password, salt)
+            elif selected_algorithm == "SHA-512":
+                result = ps.sha_with_salt(hashlib.sha512, password, salt)
 
-                self.output_text.insert(tk.END, result + "\n")
-                self.counter += 1
+            self.output_text.insert(tk.END, result + "\n")
 
-            elif selected_mode == "HMAC":
-                print(f"selected_algorithm: {selected_algorithm}")
-                print(f"selected_mode: {selected_mode}")
-                key = self.key_input.get().encode("utf-8")
-                password = self.pass_input.get().encode("utf-8")
+        elif selected_mode == "HMAC":
+            print(f"Selected hashing algorithm: {selected_algorithm}")
+            print(f"Selected mode: {selected_mode}")
+            key = self.key_input.get().encode("utf-8")
+            password = self.pass_input.get().encode("utf-8")
 
-                if selected_algorithm == "SHA-256":
-                    r = HMAC(key, password, hashlib.sha256)
-                    self.output_text.insert(tk.END, r.hexdigest() + "\n")
-                elif selected_algorithm == "SHA-512":
-                    r = HMAC(key, password, hashlib.sha512)
-                    self.output_text.insert(tk.END, r.hexdigest() + "\n")
+            if selected_algorithm == "SHA-256":
+                r = HMAC(key, password, hashlib.sha256)
+                self.output_text.insert(tk.END, r.hexdigest() + "\n")
+            elif selected_algorithm == "SHA-512":
+                r = HMAC(key, password, hashlib.sha512)
+                self.output_text.insert(tk.END, r.hexdigest() + "\n")
 
-            elif selected_mode == "PBKDF2":
-                print(f"selected_algorithm: {selected_algorithm}")
-                print(f"selected_mode: {selected_mode}")
-                salt = self.salt_input.get().encode("utf-8")
-                password = self.pass_input.get().encode("utf-8")
+        elif selected_mode == "PBKDF2":
+            print(f"Selected hashing algorithm: {selected_algorithm}")
+            print(f"Selected mode: {selected_mode}")
+            salt = self.salt_input.get().encode("utf-8")
+            password = self.pass_input.get().encode("utf-8")
 
-                if selected_algorithm == "SHA-256":
-                    pbkdf2 = PBKDF2(hashlib.sha256, password, salt, 31000, 32)
-                    self.output_text.insert(tk.END, pbkdf2.result() + "\n")
-                elif selected_algorithm == "SHA-512":
-                    pbkdf2 = PBKDF2(hashlib.sha512, password, salt, 12000, 64)
-                    self.output_text.insert(tk.END, pbkdf2.result() + "\n")
-
-        except Exception as e:
-            self.output_text.insert(tk.END, "*** Error in hashing process ***\n")
-            print(e)
-
-        self.output_text.config(state=tk.DISABLED)
+            if selected_algorithm == "SHA-256":
+                pbkdf2 = PBKDF2(hashlib.sha256, password, salt, 31000, 32)
+                self.output_text.insert(tk.END, pbkdf2.result() + "\n")
+            elif selected_algorithm == "SHA-512":
+                pbkdf2 = PBKDF2(hashlib.sha512, password, salt, 12000, 64)
+                self.output_text.insert(tk.END, pbkdf2.result() + "\n")
 
     def save_hash(self):
         content = self.output_text.get("1.0", tk.END).strip()
         if content:
             self.save_to_file(content)
         else:
-            messagebox.showinfo("No Hash", "No hash to save.")
+            messagebox.showinfo("No Hash", "No hash to save!")
 
     def save_mac(self):
         content = self.output_text.get("1.0", tk.END).strip()
         if content:
             self.save_to_file(content)
         else:
-            messagebox.showinfo("No MAC", "No MAC to save.")
+            messagebox.showinfo("No MAC", "No MAC to save!")
 
     def save_key(self):
         content = self.key_input.get().strip()
         if content:
             self.save_to_file(content)
         else:
-            messagebox.showinfo("No Key", "No key to save.")
+            messagebox.showinfo("No Key", "No key to save!")
 
     def save_to_file(self, content):
         file_path = filedialog.asksaveasfilename(
