@@ -16,12 +16,12 @@ class HMAC:
         self.key = key
         self.message = message
         self.hash_function = hash_function
+        self.block_size = 64
 
     def _pad_key(self, key):
-        block_size = 64
-        if len(key) > block_size:
+        if len(key) > self.block_size:
             key = self.hash_function(key).digest()
-        key += b"\x00" * (block_size - len(key))
+        key += b"\x00" * (self.block_size - len(key))
         return key
 
     def generate_and_hexdigest(self):
@@ -49,35 +49,35 @@ class PBKDF2:
 
     def generate_key(self):
         # Calculate the length of each block
-        hlen = self.hash_function().digest_size
-        if self.derived_key_length > (2**32 - 1) * hlen:
+        digest_size = self.hash_function().digest_size
+        if self.derived_key_length > (2**32 - 1) * digest_size:
             raise ValueError("Derived key too long!")
-        l = -(-self.derived_key_length // hlen)
-        r = self.derived_key_length - (l - 1) * hlen
+        block_length = -(-self.derived_key_length // digest_size)
+        remaining_length = self.derived_key_length - (block_length - 1) * digest_size
 
         # Generate the key
         key = b""
-        for i in range(1, l + 1):
-            key += self._generate_block(i, self.iterations)
+        for block_index in range(1, block_length + 1):
+            key += self._generate_block(block_index, self.iterations)
         return key[: self.derived_key_length].hex()
 
-    def _generate_block(self, i, iterations):
+    def _generate_block(self, block_index, iterations):
         # Generate the i-th block
         hmac_result = HMAC(
             self.password,
-            self.salt + i.to_bytes(4),
+            self.salt + block_index.to_bytes(4),
             self.hash_function,
         ).generate_and_digest()
 
         result = bytearray(hmac_result)
 
-        for j in range(2, iterations + 1):
+        for iteration_index in range(2, iterations + 1):
             hmac_result = HMAC(
                 self.password, hmac_result, self.hash_function
             ).generate_and_digest()
 
-            for k in range(len(result)):
-                result[k] ^= hmac_result[k]
+            for byte_index in range(len(result)):
+                result[byte_index] ^= hmac_result[byte_index]
 
         return bytes(result)
 
