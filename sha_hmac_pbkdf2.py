@@ -5,110 +5,81 @@ import hashlib
 import struct
 
 
-class StorePassword:
-    def generate_salt(self, byte_len=64):
-        return secrets.token_urlsafe(byte_len)
-
-    def hash_with_salt(self, hash_function, password, salt):
+class PS:
+    @staticmethod
+    def hash_password_with_salt(password, salt, hash_function):
         return hash_function((password + salt).encode()).hexdigest()
 
 
 class HMAC:
-    def __init__(self, key: bytes, message=None, hash_function=None):
-        # Assign the mode to messageDigest directly
+    def __init__(self, key, message, hash_function):
+        self.key = key
+        self.message = message
         self.hash_function = hash_function
 
-        # Initialize input and output message digests
-        self.input = self.hash_function()
-        self.output = self.hash_function()
-
-        # Get block size
-        self.block_size = self.input.block_size
-
-        # If key length is greater than block size, digest it
-        if len(key) > self.block_size:
+    def _pad_key(self, key):
+        block_size = 64
+        if len(key) > block_size:
             key = self.hash_function(key).digest()
+        key += b"\x00" * (block_size - len(key))
+        return key
 
-        # Pad key to block size with null bytes
-        key = key.ljust(self.block_size, b"\0")
+    def generate_and_hexdigest(self):
+        o_key_pad = bytes([x ^ 0x5C for x in self._pad_key(self.key)])
+        i_key_pad = bytes([x ^ 0x36 for x in self._pad_key(self.key)])
+        return self.hash_function(
+            o_key_pad + self.hash_function(i_key_pad + self.message).digest()
+        ).hexdigest()
 
-        # Define ipad and opad constants
-        self.ipad = 0x36
-        self.opad = 0x5C
-
-        # Compute input and output signatures
-        self.input_signature = bytes((key_byte ^ self.ipad) for key_byte in key)
-        self.output_signature = bytes((key_byte ^ self.opad) for key_byte in key)
-
-        # Update input and output with their respective signatures
-        self.input.update(self.input_signature)
-        self.output.update(self.output_signature)
-
-        # If message is not None, update input with message
-        if message is not None:
-            self.input.update(message)
-
-    def hexdigest(self):
-        # Copy output message digest
-        hmac_copy = self.output.copy()
-
-        # Update copy with input digest
-        hmac_copy.update(self.input.digest())
-
-        # Return hexadecimal representation of digest
-        return hmac_copy.hexdigest()
-
-    def digest(self):
-        # Copy output message digest
-        hmac_copy = self.output.copy()
-
-        # Update copy with input digest
-        hmac_copy.update(self.input.digest())
-
-        # Return digest
-        return hmac_copy.digest()
+    def generate_and_digest(self):
+        o_key_pad = bytes([x ^ 0x5C for x in self._pad_key(self.key)])
+        i_key_pad = bytes([x ^ 0x36 for x in self._pad_key(self.key)])
+        return self.hash_function(
+            o_key_pad + self.hash_function(i_key_pad + self.message).digest()
+        ).digest()
 
 
 class PBKDF2:
-    def __init__(self, hash_function, password, salt, iterations, derived_key_length):
-        # Initialize class variables
-        self.hash_function = hash_function
+    def __init__(self, password, salt, hash_function):
         self.password = password
         self.salt = salt
-        self.iterations = iterations
-        self.derived_key_length = derived_key_length
+        self.hash_function = hash_function
+        self.derived_key_length = 32
+        self.iterations = 100000
 
-    def pbkdf2_function(self, password, salt, iterations, block_index):
-        # Compute the initial HMAC digest (u) and set it as the initial result
-        result = u = HMAC(
-            password, salt + struct.pack(">i", block_index), self.hash_function
-        ).digest()
+    def generate_key(self):
+        # Calculate the length of each block
+        hlen = self.hash_function().digest_size
+        if self.derived_key_length > (2**32 - 1) * hlen:
+            raise ValueError("Derived key too long!")
+        l = -(-self.derived_key_length // hlen)
+        r = self.derived_key_length - (l - 1) * hlen
 
-        # Perform iterations - 1 HMAC computations
-        for _ in range(2, iterations + 1):
-            u = HMAC(password, u, self.hash_function).digest()
-            # XOR the result with the new digest (u)
-            result = bytes(i ^ j for i, j in zip(result, u))
+        # Generate the key
+        key = b""
+        for i in range(1, l + 1):
+            key += self._generate_block(i, self.iterations)
+        return key[: self.derived_key_length].hex()
 
-        return result
+    def _generate_block(self, i, iterations):
+        # Generate the i-th block
+        hmac_result = HMAC(
+            self.password,
+            self.salt + i.to_bytes(4),
+            self.hash_function,
+        ).generate_and_digest()
 
-    def result(self):
-        # Initialize the derived key and get the hash length
-        derived_key, hash_length = b"", self.hash_function().digest_size
+        result = bytearray(hmac_result)
 
-        # Compute the number of blocks needed to get the desired key length
-        blocks = (self.derived_key_length // hash_length) + (
-            1 if self.derived_key_length % hash_length else 0
-        )
+        for j in range(2, iterations + 1):
+            hmac_result = HMAC(
+                self.password, hmac_result, self.hash_function
+            ).generate_and_digest()
 
-        # Compute each block of the derived key
-        for block_index in range(1, blocks + 1):
-            derived_key += self.pbkdf2_function(
-                self.password, self.salt, self.iterations, block_index
-            )
+            for k in range(len(result)):
+                result[k] ^= hmac_result[k]
 
-        # Return the derived key truncated to the desired length, in hexadecimal format
-        return derived_key[: self.derived_key_length].hex()
+        return bytes(result)
 
 
 class GUI:
@@ -117,7 +88,7 @@ class GUI:
         root.title("SHA-256/512 hashing, HMAC, PBKDF2")
 
         self.algorithm_options = ["SHA-256", "SHA-512"]
-        self.mode_options = ["Store password", "HMAC", "PBKDF2"]
+        self.mode_options = ["Password Store", "HMAC", "PBKDF2"]
 
         self.selected_algorithm = tk.StringVar()
         self.selected_algorithm.set(self.algorithm_options[0])
@@ -142,31 +113,35 @@ class GUI:
         self.mode_menu.config(width=10)
         self.mode_menu.grid(row=1, column=1, sticky="w")
 
-        tk.Label(self.main_frame, text="Password:").grid(row=2, column=0, padx=10)
-        self.pass_input = tk.Entry(self.main_frame, width=41)
-        self.pass_input.grid(row=2, column=1)
+        tk.Label(self.main_frame, text="Message:").grid(row=2, column=0, padx=10)
+        self.message_input = tk.Entry(self.main_frame, width=41)
+        self.message_input.grid(row=2, column=1)
 
-        tk.Label(self.main_frame, text="Salt:").grid(row=3, column=0, padx=10)
+        tk.Label(self.main_frame, text="Password:").grid(row=3, column=0, padx=10)
+        self.pass_input = tk.Entry(self.main_frame, width=41)
+        self.pass_input.grid(row=3, column=1)
+
+        tk.Label(self.main_frame, text="Salt:").grid(row=4, column=0, padx=10)
         self.salt_input = tk.Entry(self.main_frame, width=41)
-        self.salt_input.grid(row=3, column=1)
+        self.salt_input.grid(row=4, column=1)
         tk.Button(
             self.main_frame, text="Generate salt", command=self.generate_salt, width=8
-        ).grid(row=3, column=2)
-
-        tk.Label(self.main_frame, text="Key:").grid(row=4, column=0, padx=10)
-        self.key_input = tk.Entry(self.main_frame, width=41)
-        self.key_input.grid(row=4, column=1)
-        tk.Button(
-            self.main_frame, text="Generate key", command=self.generate_key, width=8
         ).grid(row=4, column=2)
 
-        tk.Label(self.main_frame, text="Output:").grid(row=5, column=0, padx=10)
+        tk.Label(self.main_frame, text="Key:").grid(row=5, column=0, padx=10)
+        self.key_input = tk.Entry(self.main_frame, width=41)
+        self.key_input.grid(row=5, column=1)
+        tk.Button(
+            self.main_frame, text="Generate key", command=self.generate_key, width=8
+        ).grid(row=5, column=2)
+
+        tk.Label(self.main_frame, text="Output:").grid(row=6, column=0, padx=10)
         self.output_text = tk.Text(self.main_frame, width=53, height=4)
-        self.output_text.grid(row=5, column=1)
+        self.output_text.grid(row=6, column=1)
         self.output_text.config(state=tk.DISABLED)
 
         self.save_grid = tk.Frame(self.main_frame)
-        self.save_grid.grid(row=5, column=2)
+        self.save_grid.grid(row=6, column=2)
 
         tk.Button(
             self.save_grid, text="Save output", command=self.save_output, width=8
@@ -176,7 +151,7 @@ class GUI:
         )
 
         tk.Button(self.main_frame, text="Process", command=self.process_inputs).grid(
-            row=6, column=0
+            row=7, column=0
         )
 
     def generate_salt(self):
@@ -194,7 +169,7 @@ class GUI:
         selected_algorithm = self.selected_algorithm.get()
         selected_mode = self.selected_mode.get()
 
-        if selected_mode == "Store password":
+        if selected_mode == "Password Store":
             print("----------------------------------------")
             print(f"Selected hashing algorithm: {selected_algorithm}")
             print(f"Selected mode: {selected_mode}")
@@ -202,11 +177,14 @@ class GUI:
             salt = self.salt_input.get()
             password = self.pass_input.get()
 
-            store_password = StorePassword()
-            if selected_algorithm == "SHA-256":
-                result = store_password.hash_with_salt(hashlib.sha256, password, salt)
-            elif selected_algorithm == "SHA-512":
-                result = store_password.hash_with_salt(hashlib.sha512, password, salt)
+            if not salt or not password:
+                messagebox.showerror("Error", "Salt and password cannot be empty!")
+                return
+
+            hash_function = getattr(
+                hashlib, selected_algorithm.lower().replace("-", "")
+            )
+            result = PS.hash_password_with_salt(password, salt, hash_function)
             self.output_text.insert(tk.END, result + "\n")
             print("Done")
 
@@ -216,13 +194,17 @@ class GUI:
             print(f"Selected mode: {selected_mode}")
             print("Processing..")
             key = self.key_input.get().encode("utf-8")
-            password = self.pass_input.get().encode("utf-8")
+            message = self.message_input.get().encode("utf-8")
 
-            if selected_algorithm == "SHA-256":
-                result = HMAC(key, password, hashlib.sha256)
-            elif selected_algorithm == "SHA-512":
-                result = HMAC(key, password, hashlib.sha512)
-            self.output_text.insert(tk.END, result.hexdigest() + "\n")
+            if not key or not message:
+                messagebox.showerror("Error", "Key and message cannot be empty!")
+                return
+
+            hash_function = getattr(
+                hashlib, selected_algorithm.lower().replace("-", "")
+            )
+            result = HMAC(key, message, hash_function).generate_and_hexdigest()
+            self.output_text.insert(tk.END, result + "\n")
             print("Done")
 
         elif selected_mode == "PBKDF2":
@@ -233,11 +215,15 @@ class GUI:
             salt = self.salt_input.get().encode("utf-8")
             password = self.pass_input.get().encode("utf-8")
 
-            if selected_algorithm == "SHA-256":
-                result = PBKDF2(hashlib.sha256, password, salt, 31000, 32)
-            elif selected_algorithm == "SHA-512":
-                result = PBKDF2(hashlib.sha512, password, salt, 12000, 64)
-            self.output_text.insert(tk.END, result.result() + "\n")
+            if not salt or not password:
+                messagebox.showerror("Error", "Salt and password cannot be empty!")
+                return
+
+            hash_function = getattr(
+                hashlib, selected_algorithm.lower().replace("-", "")
+            )
+            result = PBKDF2(password, salt, hash_function).generate_key()
+            self.output_text.insert(tk.END, result + "\n")
             print("Done")
 
     def save_output(self):
