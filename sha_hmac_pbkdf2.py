@@ -24,19 +24,18 @@ class HMAC:
         key += b"\x00" * (self.block_size - len(key))
         return key
 
-    def generate_and_hexdigest(self):
+    def _generate(self):
         o_key_pad = bytes([x ^ 0x5C for x in self._pad_key(self.key)])
         i_key_pad = bytes([x ^ 0x36 for x in self._pad_key(self.key)])
         return self.hash_function(
             o_key_pad + self.hash_function(i_key_pad + self.message).digest()
-        ).hexdigest()
+        )
+
+    def generate_and_hexdigest(self):
+        return self._generate().hexdigest()
 
     def generate_and_digest(self):
-        o_key_pad = bytes([x ^ 0x5C for x in self._pad_key(self.key)])
-        i_key_pad = bytes([x ^ 0x36 for x in self._pad_key(self.key)])
-        return self.hash_function(
-            o_key_pad + self.hash_function(i_key_pad + self.message).digest()
-        ).digest()
+        return self._generate().digest()
 
 
 class PBKDF2:
@@ -48,21 +47,18 @@ class PBKDF2:
         self.iterations = 100000
 
     def generate_key(self):
-        # Calculate the length of each block
         digest_size = self.hash_function().digest_size
         if self.derived_key_length > (2**32 - 1) * digest_size:
             raise ValueError("Derived key too long!")
         block_length = -(-self.derived_key_length // digest_size)
         remaining_length = self.derived_key_length - (block_length - 1) * digest_size
 
-        # Generate the key
         key = b""
         for block_index in range(1, block_length + 1):
             key += self._generate_block(block_index, self.iterations)
         return key[: self.derived_key_length].hex()
 
     def _generate_block(self, block_index, iterations):
-        # Generate the i-th block
         hmac_result = HMAC(
             self.password,
             self.salt + block_index.to_bytes(4),
