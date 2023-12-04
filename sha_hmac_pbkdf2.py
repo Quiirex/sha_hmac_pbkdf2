@@ -8,7 +8,11 @@ import struct
 class PS:
     @staticmethod
     def hash_password_with_salt(password, salt, hash_function):
-        return hash_function((password + salt).encode()).hexdigest()
+        try:
+            return hash_function((password + salt).encode()).hexdigest()
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            return None
 
 
 class HMAC:
@@ -16,7 +20,7 @@ class HMAC:
         self.key = key
         self.message = message
         self.hash_function = hash_function
-        self.block_size = 64
+        self.block_size = hash_function().block_size
 
     def _pad_key(self, key):
         if len(key) > self.block_size:
@@ -135,16 +139,6 @@ class GUI:
         self.output_text = tk.Text(self.main_frame, width=53, height=4)
         self.output_text.grid(row=6, column=1)
         self.output_text.config(state=tk.DISABLED)
-
-        self.save_grid = tk.Frame(self.main_frame)
-        self.save_grid.grid(row=6, column=2)
-
-        tk.Button(
-            self.save_grid, text="Save output", command=self.save_output, width=8
-        ).grid(row=0, column=0)
-        tk.Button(self.save_grid, text="Save key", command=self.save_key, width=8).grid(
-            row=1, column=0
-        )
 
         tk.Button(self.main_frame, text="Process", command=self.process_inputs).grid(
             row=7, column=0
