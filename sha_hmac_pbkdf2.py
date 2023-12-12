@@ -21,6 +21,7 @@ class HMAC:
         self.message = message
         self.hash_function = hash_function
         self.block_size = hash_function().block_size
+        self.padded_key = self._pad_key(self.key)
 
     def _pad_key(self, key):
         if len(key) > self.block_size:
@@ -29,8 +30,8 @@ class HMAC:
         return key
 
     def _generate(self):
-        o_key_pad = bytes([x ^ 0x5C for x in self._pad_key(self.key)])
-        i_key_pad = bytes([x ^ 0x36 for x in self._pad_key(self.key)])
+        o_key_pad = bytes([x ^ 0x5C for x in self.padded_key])
+        i_key_pad = bytes([x ^ 0x36 for x in self.padded_key])
         return self.hash_function(
             o_key_pad + self.hash_function(i_key_pad + self.message).digest()
         )
