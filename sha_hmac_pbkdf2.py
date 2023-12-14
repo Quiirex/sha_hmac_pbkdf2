@@ -207,7 +207,7 @@ class GUI:
             hash_function = getattr(
                 hashlib, selected_algorithm.lower().replace("-", "")
             )
-            iterations = 1000 if hash_function == hashlib.sha256 else 210000
+            iterations = 600000 if hash_function == hashlib.sha256 else 210000
             derived_key_length = 32 if hash_function == hashlib.sha256 else 64
             result = PBKDF2(
                 password, salt, hash_function, iterations, derived_key_length
