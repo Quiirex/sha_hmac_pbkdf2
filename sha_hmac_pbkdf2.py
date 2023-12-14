@@ -44,16 +44,16 @@ class HMAC:
 
 
 class PBKDF2:
-    def __init__(self, password, salt, hash_function):
+    def __init__(self, password, salt, hash_function, iterations, derived_key_length):
         self.password = password
         self.salt = salt
         self.hash_function = hash_function
-        self.derived_key_length = 32
-        self.iterations = 100000
+        self.derived_key_length = derived_key_length
+        self.iterations = iterations
 
     def generate_key(self):
         digest_size = self.hash_function().digest_size
-        if self.derived_key_length > (2**32 - 1) * digest_size:
+        if self.derived_key_length > (2**self.derived_key_length - 1) * digest_size:
             raise ValueError("Derived key too long!")
         block_length = -(-self.derived_key_length // digest_size)
         remaining_length = self.derived_key_length - (block_length - 1) * digest_size
@@ -213,7 +213,11 @@ class GUI:
             hash_function = getattr(
                 hashlib, selected_algorithm.lower().replace("-", "")
             )
-            result = PBKDF2(password, salt, hash_function).generate_key()
+            iterations = 600000 if hash_function == hashlib.sha256 else 210000
+            derived_key_length = 32 if hash_function == hashlib.sha256 else 64
+            result = PBKDF2(
+                password, salt, hash_function, iterations, derived_key_length
+            ).generate_key()
             self.output_text.insert(tk.END, result + "\n")
             print("Done")
 
