@@ -53,8 +53,6 @@ class PBKDF2:
 
     def generate_key(self):
         digest_size = self.hash_function().digest_size
-        if self.derived_key_length > (2**self.derived_key_length - 1) * digest_size:
-            raise ValueError("Derived key too long!")
         block_length = -(-self.derived_key_length // digest_size)
         remaining_length = self.derived_key_length - (block_length - 1) * digest_size
 
