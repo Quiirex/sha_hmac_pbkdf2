@@ -8,11 +8,7 @@ import struct
 class PS:
     @staticmethod
     def hash_password_with_salt(password, salt, hash_function):
-        try:
-            return hash_function((password + salt).encode()).hexdigest()
-        except Exception as e:
-            print(f"Error occurred: {e}")
-            return None
+        return hash_function((password + salt).encode()).hexdigest()
 
 
 class HMAC:
