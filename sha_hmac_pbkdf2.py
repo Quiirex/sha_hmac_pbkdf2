@@ -145,11 +145,11 @@ class GUI:
 
     def generate_salt(self):
         self.salt_input.delete(0, tk.END)
-        self.salt_input.insert(tk.END, secrets.token_urlsafe(32))
+        self.salt_input.insert(tk.END, secrets.token_urlsafe(64))
 
     def generate_key(self):
         self.key_input.delete(0, tk.END)
-        self.key_input.insert(tk.END, secrets.token_urlsafe(32))
+        self.key_input.insert(tk.END, secrets.token_urlsafe(64))
 
     def process_inputs(self):
         self.output_text.config(state=tk.NORMAL)
