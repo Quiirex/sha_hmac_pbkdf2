@@ -109,29 +109,29 @@ class GUI:
         self.mode_menu.grid(row=1, column=1, sticky="w")
 
         tk.Label(self.main_frame, text="Message:").grid(row=2, column=0, padx=10)
-        self.message_input = tk.Entry(self.main_frame, width=41)
+        self.message_input = tk.Entry(self.main_frame, width=50)
         self.message_input.grid(row=2, column=1)
 
         tk.Label(self.main_frame, text="Password:").grid(row=3, column=0, padx=10)
-        self.pass_input = tk.Entry(self.main_frame, width=41)
+        self.pass_input = tk.Entry(self.main_frame, width=50)
         self.pass_input.grid(row=3, column=1)
 
         tk.Label(self.main_frame, text="Salt:").grid(row=4, column=0, padx=10)
-        self.salt_input = tk.Entry(self.main_frame, width=41)
+        self.salt_input = tk.Entry(self.main_frame, width=50)
         self.salt_input.grid(row=4, column=1)
         tk.Button(
             self.main_frame, text="Generate salt", command=self.generate_salt, width=8
         ).grid(row=4, column=2)
 
         tk.Label(self.main_frame, text="Key:").grid(row=5, column=0, padx=10)
-        self.key_input = tk.Entry(self.main_frame, width=41)
+        self.key_input = tk.Entry(self.main_frame, width=50)
         self.key_input.grid(row=5, column=1)
         tk.Button(
             self.main_frame, text="Generate key", command=self.generate_key, width=8
         ).grid(row=5, column=2)
 
         tk.Label(self.main_frame, text="Output:").grid(row=6, column=0, padx=10)
-        self.output_text = tk.Text(self.main_frame, width=53, height=4)
+        self.output_text = tk.Text(self.main_frame, width=65, height=4)
         self.output_text.grid(row=6, column=1)
         self.output_text.config(state=tk.DISABLED)
 
