@@ -1,6 +1,6 @@
 # SHA, HMAC, PBKDF2
 
-A python + tkinter application of the SHA, HMAC and PBKDF2 algorithms.
+A python + tkinter implementation of the SHA, HMAC and PBKDF2 algorithms from scratch.
 
 ## The background
 
